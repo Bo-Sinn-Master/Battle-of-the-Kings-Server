@@ -2,15 +2,19 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const WebSocket = require('ws');
+const http = require('http');
 
 dotenv.config();
 const app = express();
+const server = http.createServer(app);
+const port = process.env.PORT || 8081;
+
 app.use(cors({ origin: ['http://localhost:3000', 'http://localhost:5173', 'https://battle-of-the-kings-client.vercel.app', 'https://battle-of-the-kings-server.onrender.com'] }));
 app.use(express.json());
 
 const users = new Map();
 
-const wss = new WebSocket.Server({ port: 8082 });
+const wss = new WebSocket.Server({ server });
 wss.on('connection', (ws) => {
   console.log('WebSocket client connected');
   ws.on('message', (message) => {
@@ -18,7 +22,7 @@ wss.on('connection', (ws) => {
       const { user_id, action } = JSON.parse(message);
       console.log(`Received message: user_id=${user_id}, action=${action}`);
       if (action === 'pvp_match') {
-        ws.send(JSON.stringify({ status: 'success', match: vs `Player${user_id + 1}` }));
+        ws.send(JSON.stringify({ status: 'success', match: `vs Player${user_id + 1}` }));
       } else {
         ws.send(JSON.stringify({ status: 'error', message: 'Unknown action' }));
       }
@@ -99,10 +103,10 @@ app.post('/api', async (req, res) => {
   }
 
   if (action === 'start_wave') {
-    if (user.currentWave > 50) return res.json({ status: 'error', message: 'Все волны пройдены' });
-    const waveStrength = user.currentWave * 100;
+    if (user.currentWave > 50) return res.json({ status: 'error', message: 'Все волны пройдены' });const waveStrength = user.currentWave * 100;
     const userStrength = 1000;
-    if (userStrength >= waveStrength) {const reward = user.currentWave * 1000;
+    if (userStrength >= waveStrength) {
+      const reward = user.currentWave * 1000;
       const exp = Math.floor(400 + Math.random() * 100);
       user.balance += reward;
       user.experience += exp;
@@ -183,4 +187,4 @@ app.post('/api', async (req, res) => {
   return res.json({ status: 'error', message: 'Неизвестное действие' });
 });
 
-app.listen(8081, () => console.log('Server running on port 8081'));
+server.listen(port, () => console.log(`Server running on port ${port}`));
