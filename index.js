@@ -1,53 +1,47 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const WebSocket = require('ws');
 
 dotenv.config();
 const app = express();
-app.use(cors({ origin: ['http://localhost:3000', 'http://localhost:5173'] }));
+app.use(cors({ origin: ['http://localhost:3000', 'http://localhost:5173', 'https://battle-of-the-kings-client.vercel.app', 'https://battle-of-the-kings-server.onrender.com'] }));
 app.use(express.json());
 
-// Фейковая база данных
 const users = new Map();
 
-// Ограничение тапов (5/сек)
-const rateLimit = (req, res, next) => {
-  const userId = req.body.user_id;
-  let user = users.get(userId);
-  if (!user) {
-    user = {
-      userId,
-      balance: 50,
-      energy: 1500,
-      miningRate: 1,
-      energyLevel: 1,
-      upgradeTapCost: 1000,
-      upgradeEnergyCost: 1500,
-      level: 1,
-      experience: 0,
-      currentWave: 1,
-      referrals: [],
-      lastEnergyUpdate: Math.floor(Date.now() / 1000),
-      lastTap: 0,
-      energySpent: 0
-    };
-    users.set(userId, user);
-  }
-  const currentTime = Math.floor(Date.now() / 1000);
-  if (user.lastTap && currentTime - user.lastTap < 0.2) {
-    return res.json({ status: 'error', message: 'Слишком много тапов! Подождите.' });
-  }
-  user.lastTap = currentTime;
-  next();
-};
+const wss = new WebSocket.Server({ port: 8082 });
+wss.on('connection', (ws) => {
+  console.log('WebSocket client connected');
+  ws.on('message', (message) => {
+    try {
+      const { user_id, action } = JSON.parse(message);
+      console.log(`Received message: user_id=${user_id}, action=${action}`);
+      if (action === 'pvp_match') {
+        ws.send(JSON.stringify({ status: 'success', match: vs `Player${user_id + 1}` }));
+      } else {
+        ws.send(JSON.stringify({ status: 'error', message: 'Unknown action' }));
+      }
+    } catch (err) {
+      console.error('WebSocket message error:', err.message);
+      ws.send(JSON.stringify({ status: 'error', message: 'Invalid message format' }));
+    }
+  });
+  ws.on('error', (err) => {
+    console.error('WebSocket error:', err.message);
+  });
+  ws.on('close', (code, reason) => {
+    console.log(`WebSocket closed: code=${code}, reason=${reason}`);
+  });
+});
 
-app.post('/api', rateLimit, async (req, res) => {
-  const { user_id, action, token, platform } = req.body;
+app.post('/api', async (req, res) => {
+  const { user_id, action, building, weapon } = req.body;
   let user = users.get(user_id);
   if (!user) {
     user = {
       userId: user_id,
-      balance: 50,
+      balance: 10000,
       energy: 1500,
       miningRate: 1,
       energyLevel: 1,
@@ -59,17 +53,13 @@ app.post('/api', rateLimit, async (req, res) => {
       referrals: [],
       lastEnergyUpdate: Math.floor(Date.now() / 1000),
       lastTap: 0,
-      energySpent: 0
+      energySpent: 0,
+      buildings: [],
+      weapons: []
     };
     users.set(user_id, user);
   }
 
-  // Проверка платформы
-  if (!platform || !['ios', 'android'].includes(platform)) {
-    return res.json({ status: 'error', message: 'Игра доступна только на мобильных устройствах' });
-  }
-
-  // Обновление энергии
   const currentTime = Math.floor(Date.now() / 1000);
   const elapsed = currentTime - user.lastEnergyUpdate;
   user.energy = Math.min(1000 + user.energyLevel * 500, user.energy + Math.floor(elapsed / 60) * 10);
@@ -109,10 +99,10 @@ app.post('/api', rateLimit, async (req, res) => {
   }
 
   if (action === 'start_wave') {
+    if (user.currentWave > 50) return res.json({ status: 'error', message: 'Все волны пройдены' });
     const waveStrength = user.currentWave * 100;
-    const userStrength = 1000; // Заглушка
-    if (userStrength >= waveStrength) {
-      const reward = user.currentWave * 1000;
+    const userStrength = 1000;
+    if (userStrength >= waveStrength) {const reward = user.currentWave * 1000;
       const exp = Math.floor(400 + Math.random() * 100);
       user.balance += reward;
       user.experience += exp;
@@ -142,8 +132,52 @@ app.post('/api', rateLimit, async (req, res) => {
       upgrade_energy_cost: user.upgradeEnergyCost,
       level: user.level,
       experience: user.experience,
-      energy_spent: user.energySpent
+      energy_spent: user.energySpent,
+      buildings: user.buildings,
+      weapons: user.weapons
     });
+  }
+
+  if (action === 'build') {
+    const costs = {
+      mine: 1000,
+      barracks: 3000,
+      fortress: 8000,
+      tower: 2000,
+      wall: 1500,
+      armory: 4000,
+      temple: 6000,
+      castle: 10000,
+      farm: 1200,
+      lumbermill: 1800
+    };
+    if (!costs[building]) return res.json({ status: 'error', message: 'Неизвестное здание' });
+    if (user.balance < costs[building]) return res.json({ status: 'error', message: `Недостаточно $TSARC. Нужно ${costs[building]}.` });
+    user.balance -= costs[building];
+    if (!Array.isArray(user.buildings)) user.buildings = [];
+    user.buildings.push(building);
+    return res.json({ status: 'success', balance: user.balance, buildings: user.buildings });
+  }
+
+  if (action === 'buy_weapon') {
+    const costs = {
+      sword: 500,
+      bow: 1000,
+      staff: 2000,
+      spear: 800,
+      axe: 1200,
+      mace: 1500,
+      dagger: 600,
+      crossbow: 1800,
+      hammer: 2200,
+      flail: 2500
+    };
+    if (!costs[weapon]) return res.json({ status: 'error', message: 'Неизвестное оружие' });
+    if (user.balance < costs[weapon]) return res.json({ status: 'error', message: `Недостаточно $TSARC. Нужно ${costs[weapon]}.` });
+    user.balance -= costs[weapon];
+    if (!Array.isArray(user.weapons)) user.weapons = [];
+    user.weapons.push(weapon);
+    return res.json({ status: 'success', balance: user.balance, weapons: user.weapons });
   }
 
   return res.json({ status: 'error', message: 'Неизвестное действие' });

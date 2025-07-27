@@ -1,18 +1,14 @@
+ 
 {
   "name": "battle-of-the-kings-server",
   "version": "1.0.0",
-  "dependencies": {
-    "@types/express": "^5.0.3",
-    "@types/node": "^24.1.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
-    "express": "^4.21.2",
-    "mongoose": "^7.0.0",
-    "node-fetch": "^2.6.7",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
-  },
   "scripts": {
     "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "ws": "^8.13.0"
   }
 }
